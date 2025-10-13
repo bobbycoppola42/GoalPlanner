@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { signOut } from 'firebase/auth';
+import { auth } from './lib/firebase';
 
 function GoalPlanner() {
   const [goals, setGoals] = useState([]);
@@ -99,10 +101,20 @@ function GoalPlanner() {
       {/* Header */}
       <header className="bg-white shadow-md sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold text-indigo-600 flex items-center gap-2">
-            🎯 Goal Planner
-          </h1>
-          <p className="text-sm text-gray-600 mt-1">Track and achieve your goals</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-indigo-600 flex items-center gap-2">
+                🎯 Goal Planner
+              </h1>
+              <p className="text-sm text-gray-600 mt-1">Track and achieve your goals</p>
+            </div>
+            <button
+              onClick={() => signOut(auth)}
+              className="px-3 py-1.5 text-sm text-gray-700 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            >
+              Logout
+            </button>
+          </div>
         </div>
       </header>
 

@@ -1,2 +1,10 @@
-.env*
-node_modules
+# dependencies
+node_modules/
+
+# build outputs
+dist/
+build/
+
+# environment files
+.env
+.env.*

@@ -11,9 +11,11 @@ import {
   serverTimestamp 
 } from 'firebase/firestore';
 import { useTheme } from './contexts/ThemeContext';
+import GoalAssistant from './components/GoalAssistant';
 
 function GoalPlanner() {
   const { darkMode, toggleDarkMode } = useTheme();
+  const [activeTab, setActiveTab] = useState('goals'); // 'goals' or 'assistant'
   const [goals, setGoals] = useState([]);
   const [showAddGoal, setShowAddGoal] = useState(false);
   const [sortBy, setSortBy] = useState('date');
@@ -146,11 +148,11 @@ function GoalPlanner() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 pb-20">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex flex-col">
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 shadow-md sticky top-0 z-10">
-        <div className="max-w-2xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
                 🎯 Goal Planner
@@ -173,11 +175,44 @@ function GoalPlanner() {
               </button>
             </div>
           </div>
+          
+          {/* Tab Navigation */}
+          <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700">
+            <button
+              onClick={() => setActiveTab('goals')}
+              className={`px-4 py-2 font-medium text-sm transition-colors relative ${
+                activeTab === 'goals'
+                  ? 'text-indigo-600 dark:text-indigo-400'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+            >
+              📋 My Goals
+              {activeTab === 'goals' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400"></div>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('assistant')}
+              className={`px-4 py-2 font-medium text-sm transition-colors relative ${
+                activeTab === 'assistant'
+                  ? 'text-indigo-600 dark:text-indigo-400'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+            >
+              🤖 AI Assistant
+              {activeTab === 'assistant' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400"></div>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Stats Section */}
-      <div className="max-w-2xl mx-auto px-4 py-6">
+      {/* Content Area */}
+      {activeTab === 'goals' ? (
+        <>
+          {/* Stats Section */}
+          <div className="max-w-2xl mx-auto px-4 py-6">
         {/* Sort Buttons */}
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
           <button
@@ -416,13 +451,20 @@ function GoalPlanner() {
         </div>
       )}
 
-      {/* Floating Action Button */}
-      <button
-        onClick={() => setShowAddGoal(true)}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 flex items-center justify-center text-2xl z-10"
-      >
-        +
-      </button>
+          {/* Floating Action Button */}
+          <button
+            onClick={() => setShowAddGoal(true)}
+            className="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 flex items-center justify-center text-2xl z-10"
+          >
+            +
+          </button>
+        </>
+      ) : (
+        /* AI Assistant Tab */
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <GoalAssistant goals={goals} />
+        </div>
+      )}
     </div>
   );
 }

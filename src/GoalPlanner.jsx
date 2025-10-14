@@ -1,11 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { signOut } from 'firebase/auth';
-import { auth } from './lib/firebase';
+import { auth, db } from './lib/firebase';
+import { 
+  collection, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  onSnapshot,
+  serverTimestamp 
+} from 'firebase/firestore';
+import { useTheme } from './contexts/ThemeContext';
 
 function GoalPlanner() {
+  const { darkMode, toggleDarkMode } = useTheme();
   const [goals, setGoals] = useState([]);
   const [showAddGoal, setShowAddGoal] = useState(false);
   const [sortBy, setSortBy] = useState('date');
+  const [loading, setLoading] = useState(true);
   const [newGoal, setNewGoal] = useState({
     title: '',
     description: '',
@@ -14,44 +26,78 @@ function GoalPlanner() {
     priority: 'medium'
   });
 
-  const addGoal = () => {
-    if (newGoal.title.trim()) {
-      setGoals([
-        ...goals,
-        {
-          id: Date.now(),
+  // Load goals from Firestore in real-time
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    const goalsRef = collection(db, 'users', auth.currentUser.uid, 'goals');
+
+    const unsubscribe = onSnapshot(goalsRef, (snapshot) => {
+      const goalsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setGoals(goalsData);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const addGoal = async () => {
+    if (newGoal.title.trim() && auth.currentUser) {
+      try {
+        const goalsRef = collection(db, 'users', auth.currentUser.uid, 'goals');
+        await addDoc(goalsRef, {
           ...newGoal,
           completed: false,
-          createdAt: new Date().toISOString()
-        }
-      ]);
-      setNewGoal({
-        title: '',
-        description: '',
-        category: 'personal',
-        deadline: '',
-        priority: 'medium'
-      });
-      setShowAddGoal(false);
+          createdAt: serverTimestamp()
+        });
+        setNewGoal({
+          title: '',
+          description: '',
+          category: 'personal',
+          deadline: '',
+          priority: 'medium'
+        });
+        setShowAddGoal(false);
+      } catch (error) {
+        console.error('Error adding goal:', error);
+      }
     }
   };
 
-  const toggleGoalComplete = (id) => {
-    setGoals(goals.map(goal =>
-      goal.id === id ? { ...goal, completed: !goal.completed } : goal
-    ));
+  const toggleGoalComplete = async (id) => {
+    try {
+      const goal = goals.find(g => g.id === id);
+      if (goal && auth.currentUser) {
+        const goalRef = doc(db, 'users', auth.currentUser.uid, 'goals', id);
+        await updateDoc(goalRef, {
+          completed: !goal.completed
+        });
+      }
+    } catch (error) {
+      console.error('Error updating goal:', error);
+    }
   };
 
-  const deleteGoal = (id) => {
-    setGoals(goals.filter(goal => goal.id !== id));
+  const deleteGoal = async (id) => {
+    try {
+      if (auth.currentUser) {
+        const goalRef = doc(db, 'users', auth.currentUser.uid, 'goals', id);
+        await deleteDoc(goalRef);
+      }
+    } catch (error) {
+      console.error('Error deleting goal:', error);
+    }
   };
 
   const getPriorityColor = (priority) => {
     switch (priority) {
-      case 'high': return 'bg-red-100 text-red-800 border-red-300';
-      case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-      case 'low': return 'bg-green-100 text-green-800 border-green-300';
-      default: return 'bg-gray-100 text-gray-800 border-gray-300';
+      case 'high': return 'bg-red-100 text-red-800 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700';
+      case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-700';
+      case 'low': return 'bg-green-100 text-green-800 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700';
+      default: return 'bg-gray-100 text-gray-800 border-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600';
     }
   };
 
@@ -91,29 +137,41 @@ function GoalPlanner() {
         if (a.completed !== b.completed) {
           return a.completed ? 1 : -1;
         }
-        return new Date(b.createdAt) - new Date(a.createdAt);
+        // Handle Firestore Timestamp objects
+        const aTime = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+        const bTime = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+        return bTime - aTime;
       });
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 pb-20">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 pb-20">
       {/* Header */}
-      <header className="bg-white shadow-md sticky top-0 z-10">
+      <header className="bg-white dark:bg-gray-800 shadow-md sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-indigo-600 flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
                 🎯 Goal Planner
               </h1>
-              <p className="text-sm text-gray-600 mt-1">Track and achieve your goals</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Track and achieve your goals</p>
             </div>
-            <button
-              onClick={() => signOut(auth)}
-              className="px-3 py-1.5 text-sm text-gray-700 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            >
-              Logout
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleDarkMode}
+                className="px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                title="Toggle dark mode"
+              >
+                {darkMode ? '☀️' : '🌙'}
+              </button>
+              <button
+                onClick={() => signOut(auth)}
+                className="px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+              >
+                Logout
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -127,7 +185,7 @@ function GoalPlanner() {
             className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
               sortBy === 'date'
                 ? 'bg-indigo-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-gray-50'
+                : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'
             }`}
           >
             📅 Date
@@ -137,7 +195,7 @@ function GoalPlanner() {
             className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
               sortBy === 'priority'
                 ? 'bg-indigo-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-gray-50'
+                : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'
             }`}
           >
             ⚡ Priority
@@ -147,7 +205,7 @@ function GoalPlanner() {
             className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
               sortBy === 'deadline'
                 ? 'bg-indigo-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-gray-50'
+                : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'
             }`}
           >
             ⏰ Deadline
@@ -155,21 +213,21 @@ function GoalPlanner() {
         </div>
 
         <div className="grid grid-cols-3 gap-3">
-          <div className="bg-white rounded-lg p-4 shadow-sm text-center">
-            <div className="text-2xl font-bold text-indigo-600">{goals.length}</div>
-            <div className="text-xs text-gray-600 mt-1">Total Goals</div>
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm text-center">
+            <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{goals.length}</div>
+            <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">Total Goals</div>
           </div>
-          <div className="bg-white rounded-lg p-4 shadow-sm text-center">
-            <div className="text-2xl font-bold text-green-600">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm text-center">
+            <div className="text-2xl font-bold text-green-600 dark:text-green-400">
               {goals.filter(g => g.completed).length}
             </div>
-            <div className="text-xs text-gray-600 mt-1">Completed</div>
+            <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">Completed</div>
           </div>
-          <div className="bg-white rounded-lg p-4 shadow-sm text-center">
-            <div className="text-2xl font-bold text-orange-600">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm text-center">
+            <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
               {goals.filter(g => !g.completed).length}
             </div>
-            <div className="text-xs text-gray-600 mt-1">Active</div>
+            <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">Active</div>
           </div>
         </div>
       </div>
@@ -177,17 +235,17 @@ function GoalPlanner() {
       {/* Goals List */}
       <div className="max-w-2xl mx-auto px-4 pb-6">
         {goals.length === 0 ? (
-          <div className="bg-white rounded-lg p-8 shadow-sm text-center">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-8 shadow-sm text-center">
             <div className="text-6xl mb-4">🎯</div>
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">No goals yet</h3>
-            <p className="text-gray-500 text-sm">Start by adding your first goal!</p>
+            <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">No goals yet</h3>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">Start by adding your first goal!</p>
           </div>
         ) : (
           <div className="space-y-3">
             {getSortedGoals().map(goal => (
               <div
                 key={goal.id}
-                className={`bg-white rounded-lg p-4 shadow-sm transition-all ${
+                className={`bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm transition-all ${
                   goal.completed ? 'opacity-60' : ''
                 }`}
               >
@@ -198,7 +256,7 @@ function GoalPlanner() {
                     className={`mt-1 w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${
                       goal.completed
                         ? 'bg-green-500 border-green-500'
-                        : 'border-gray-300 hover:border-indigo-500'
+                        : 'border-gray-300 dark:border-gray-600 hover:border-indigo-500 dark:hover:border-indigo-400'
                     }`}
                   >
                     {goal.completed && <span className="text-white text-sm">✓</span>}
@@ -208,7 +266,7 @@ function GoalPlanner() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <h3
-                        className={`font-semibold text-gray-800 ${
+                        className={`font-semibold text-gray-800 dark:text-gray-200 ${
                           goal.completed ? 'line-through' : ''
                         }`}
                       >
@@ -216,25 +274,25 @@ function GoalPlanner() {
                       </h3>
                       <button
                         onClick={() => deleteGoal(goal.id)}
-                        className="text-red-500 hover:text-red-700 text-sm flex-shrink-0"
+                        className="text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-sm flex-shrink-0"
                       >
                         🗑️
                       </button>
                     </div>
 
                     {goal.description && (
-                      <p className="text-sm text-gray-600 mt-1">{goal.description}</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{goal.description}</p>
                     )}
 
                     <div className="flex flex-wrap gap-2 mt-3">
-                      <span className="text-xs px-2 py-1 rounded-full bg-indigo-100 text-indigo-700">
+                      <span className="text-xs px-2 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
                         {getCategoryIcon(goal.category)} {goal.category}
                       </span>
                       <span className={`text-xs px-2 py-1 rounded-full border ${getPriorityColor(goal.priority)}`}>
                         {goal.priority}
                       </span>
                       {goal.deadline && (
-                        <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">
+                        <span className="text-xs px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
                           📅 {new Date(goal.deadline).toLocaleDateString()}
                         </span>
                       )}
@@ -249,13 +307,13 @@ function GoalPlanner() {
 
       {/* Add Goal Modal */}
       {showAddGoal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-20 flex items-end sm:items-center justify-center">
-          <div className="bg-white w-full sm:max-w-lg sm:rounded-lg rounded-t-2xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b px-4 py-4 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-800">Add New Goal</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 z-20 flex items-end sm:items-center justify-center">
+          <div className="bg-white dark:bg-gray-800 w-full sm:max-w-lg sm:rounded-lg rounded-t-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white dark:bg-gray-800 border-b dark:border-gray-700 px-4 py-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-800 dark:text-gray-200">Add New Goal</h2>
               <button
                 onClick={() => setShowAddGoal(false)}
-                className="text-gray-500 hover:text-gray-700 text-2xl"
+                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-2xl"
               >
                 ×
               </button>
@@ -264,7 +322,7 @@ function GoalPlanner() {
             <div className="p-4 space-y-4">
               {/* Title */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Goal Title *
                 </label>
                 <input
@@ -272,13 +330,13 @@ function GoalPlanner() {
                   value={newGoal.title}
                   onChange={(e) => setNewGoal({ ...newGoal, title: e.target.value })}
                   placeholder="e.g., Learn React"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 />
               </div>
 
               {/* Description */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Description
                 </label>
                 <textarea
@@ -286,19 +344,19 @@ function GoalPlanner() {
                   onChange={(e) => setNewGoal({ ...newGoal, description: e.target.value })}
                   placeholder="Add more details..."
                   rows="3"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 />
               </div>
 
               {/* Category */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Category
                 </label>
                 <select
                   value={newGoal.category}
                   onChange={(e) => setNewGoal({ ...newGoal, category: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 >
                   <option value="personal">👤 Personal</option>
                   <option value="work">💼 Work</option>
@@ -309,13 +367,13 @@ function GoalPlanner() {
 
               {/* Priority */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Priority
                 </label>
                 <select
                   value={newGoal.priority}
                   onChange={(e) => setNewGoal({ ...newGoal, priority: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 >
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
@@ -325,26 +383,28 @@ function GoalPlanner() {
 
               {/* Deadline */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Deadline
                 </label>
                 <input
                   type="date"
                   value={newGoal.deadline}
                   onChange={(e) => setNewGoal({ ...newGoal, deadline: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 />
               </div>
 
               {/* Buttons */}
               <div className="flex gap-3 pt-2">
                 <button
+                  type="button"
                   onClick={() => setShowAddGoal(false)}
-                  className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+                  className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={addGoal}
                   className="flex-1 px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
                 >
